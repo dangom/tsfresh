@@ -1493,11 +1493,11 @@ def number_crossing_m(x, m):
     :param m: the threshold for the crossing
     :type m: float
     :return: the value of this feature
-    :return type: float
+    :return type: int
     """
     x = np.asarray(x)
     x = x[x != m]
-    return sum(np.abs(np.diff(np.sign(x - m))))/2
+    return np.where(np.diff(np.sign(x - m)))[0].size
 
 
 @set_property("fctype", "simple")
@@ -1511,7 +1511,7 @@ def maximum(x):
     :return: the value of this feature
     :return type: float
     """
-    return max(x)
+    return np.max(x)
 
 
 @set_property("fctype", "simple")
@@ -1525,7 +1525,7 @@ def minimum(x):
     :return: the value of this feature
     :return type: float
     """
-    return min(x)
+    return np.min(x)
 
 
 @set_property("fctype", "simple")
