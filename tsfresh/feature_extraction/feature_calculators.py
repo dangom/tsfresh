@@ -19,6 +19,7 @@ from __future__ import absolute_import, division
 import itertools
 from builtins import range
 
+import numba
 import numpy as np
 import pandas as pd
 from numpy.linalg import LinAlgError
@@ -130,6 +131,81 @@ def set_property(key, value):
             func.__doc__ = func.__doc__ + "\n\n    *This function is of type: " + value + "*\n"
         return func
     return decorate_func
+
+
+@numba.jit(nopython=True)
+def _measure_similarity(time_series, A, B, prev, curr, n):
+    """This function is a helper routine for computing sample entropy
+    faster.
+
+    :param time_series: the time series to calculate the entropy
+    :param A: Preallocated np.zeros((1, 1))
+    :param B: Preallocated np.zeros((1, 1))
+    :param prev: Preallocated np.zeros(n)
+    :param curr: Preallocated np.zeros(n)
+    :param n: Preallocated len(time_series)
+    :returns: A, B
+    :rtype: tuple(float64, float64)
+
+    """
+    tolerance = 0.2 * np.std(time_series)
+
+    for i in range(n - 1):
+        nj = n - i - 1
+        ts1 = time_series[i]
+        for jj in range(nj):
+            j = jj + i + 1
+            if np.abs(time_series[j] - ts1) < tolerance:  # distance between two vectors
+                curr[jj] = prev[jj] + 1
+                temp_ts_length = min(1, curr[jj])
+                for m in range(int(temp_ts_length)):
+                    A[m] += 1
+                    if j < n - 1:
+                        B[m] += 1
+            else:
+                curr[jj] = 0
+        for j in range(nj):
+            prev[j] = curr[j]
+
+    return A, B
+
+
+@numba.extending.overload_method(numba.types.Array, 'take')
+def array_take(arr, indices):
+    if isinstance(indices, numba.types.Array):
+        def take_impl(arr, indices):
+            n = indices.shape[0]
+            res = np.empty(n, arr.dtype)
+            for i in range(n):
+                res[i] = arr[indices[i]]
+            return res
+        return take_impl
+
+
+@numba.jit(nopython=True)
+def roll(a, shift):
+    """A faster numba alternative to np.roll, which is used a lot
+    throughout the feature calculators
+
+    :param a: timeseries
+    :param shift: shift
+    :returns: shifted timeseries, as does np.roll
+    :rtype: np.array
+
+    """
+    n = a.size
+    reshape = True
+
+    if n == 0:
+        return a
+    shift %= n
+
+    indexes = np.concatenate((np.arange(n - shift, n), np.arange(n - shift)))
+
+    res = a.take(indexes)
+    if reshape:
+        res = res.reshape(a.shape)
+    return res
 
 
 @set_property("fctype", "simple")
@@ -488,8 +564,9 @@ def mean_second_derivative_central(x):
     :return: the value of this feature
     :return type: float
     """
-
-    diff = (np.roll(x, 1) - 2 * np.array(x) + np.roll(x, -1)) / 2.0
+    if not isinstance(x, np.ndarray):
+        x = np.asarray(x)
+    diff = (roll(x, 1) - 2 * np.array(x) + roll(x, -1)) / 2.0
     return np.mean(diff[1:-1])
 
 
@@ -1009,18 +1086,21 @@ def number_peaks(x, n):
     :return: the value of this feature
     :return type: float
     """
+    if not isinstance(x, np.ndarray):
+        x = np.asarray(x)
+
     x_reduced = x[n:-n]
 
     res = None
     for i in range(1, n + 1):
-        result_first = (x_reduced > np.roll(x, i)[n:-n])
+        result_first = (x_reduced > roll(x, i)[n:-n])
 
         if res is None:
             res = result_first
         else:
             res &= result_first
 
-        res &= (x_reduced > np.roll(x, -i)[n:-n])
+        res &= (x_reduced > roll(x, -i)[n:-n])
     return np.sum(res)
 
 
@@ -1252,6 +1332,9 @@ def change_quantiles(x, ql, qh, isabs, f_agg):
     :return: the value of this feature
     :return type: float
     """
+    if not isinstance(x, np.ndarray):
+        x = np.asarray(x)
+
     if ql >= qh:
         ValueError("ql={} should be lower than qh={}".format(ql, qh))
 
@@ -1266,7 +1349,7 @@ def change_quantiles(x, ql, qh, isabs, f_agg):
     except ValueError:  # Occurs when ql are qh effectively equal, e.g. x is not long enough or is too categorical
         return 0
     # We only count changes that start and end inside the corridor
-    ind = (bin_cat_0 * np.roll(bin_cat_0, 1))[1:]
+    ind = (bin_cat_0 * roll(bin_cat_0, 1))[1:]
     if sum(ind) == 0:
         return 0
     else:
@@ -1312,8 +1395,8 @@ def time_reversal_asymmetry_statistic(x, lag):
     if 2 * lag >= n:
         return 0
     else:
-        return np.mean((np.roll(x, 2 * -lag) * np.roll(x, 2 * -lag) * np.roll(x, -lag) -
-                        np.roll(x, -lag) * x * x)[0:(n - 2 * lag)])
+        return np.mean((roll(x, 2 * -lag) * roll(x, 2 * -lag) * roll(x, -lag) -
+                        roll(x, -lag) * x * x)[0:(n - 2 * lag)])
 
 
 @set_property("fctype", "simple")
@@ -1347,13 +1430,13 @@ def c3(x, lag):
     :return: the value of this feature
     :return type: float
     """
-    if not isinstance(x, (np.ndarray, pd.Series)):
+    if not isinstance(x, np.ndarray):
         x = np.asarray(x)
     n = x.size
     if 2 * lag >= n:
         return 0
     else:
-        return np.mean((np.roll(x, 2 * -lag) * np.roll(x, -lag) * x)[0:(n - 2 * lag)])
+        return np.mean((roll(x, 2 * -lag) * roll(x, -lag) * x)[0:(n - 2 * lag)])
 
 
 @set_property("fctype", "simple")
@@ -1382,8 +1465,7 @@ def binned_entropy(x, max_bins):
     return - np.sum(p * np.math.log(p) for p in probs if p != 0)
 
 # todo - include latex formula
-# todo - check if vectorizable
-@set_property("high_comp_cost", True)
+# @set_property("high_comp_cost", True)
 @set_property("fctype", "simple")
 def sample_entropy(x):
     """
@@ -1400,33 +1482,16 @@ def sample_entropy(x):
     :return: the value of this feature
     :return type: float
     """
-    x = np.array(x)
+    if not isinstance(x, np.ndarray):
+        x = np.asarray(x)
 
-    sample_length = 1 # number of sequential points of the time series
-    tolerance = 0.2 * np.std(x) # 0.2 is a common value for r - why?
-
-    n = len(x)
-    prev = np.zeros(n)
-    curr = np.zeros(n)
     A = np.zeros((1, 1))  # number of matches for m = [1,...,template_length - 1]
     B = np.zeros((1, 1))  # number of matches for m = [1,...,template_length]
+    n = x.size
+    prev = np.zeros(n)
+    curr = np.zeros(n)
 
-    for i in range(n - 1):
-        nj = n - i - 1
-        ts1 = x[i]
-        for jj in range(nj):
-            j = jj + i + 1
-            if abs(x[j] - ts1) < tolerance:  # distance between two vectors
-                curr[jj] = prev[jj] + 1
-                temp_ts_length = min(sample_length, curr[jj])
-                for m in range(int(temp_ts_length)):
-                    A[m] += 1
-                    if j < n - 1:
-                        B[m] += 1
-            else:
-                curr[jj] = 0
-        for j in range(nj):
-            prev[j] = curr[j]
+    A, B = _measure_similarity(x, A, B, prev, curr, n)
 
     N = n * (n - 1) / 2
     B = np.vstack(([N], B[0]))
