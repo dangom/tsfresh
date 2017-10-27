@@ -564,8 +564,12 @@ def mean_second_derivative_central(x):
     :return: the value of this feature
     :return type: float
     """
+    if isinstance(x, pd.Series):
+        x = x.values
+
     if not isinstance(x, np.ndarray):
         x = np.asarray(x)
+
     diff = (roll(x, 1) - 2 * np.array(x) + roll(x, -1)) / 2.0
     return np.mean(diff[1:-1])
 
@@ -1086,6 +1090,9 @@ def number_peaks(x, n):
     :return: the value of this feature
     :return type: float
     """
+    if isinstance(x, pd.Series):
+        x = x.values
+
     if not isinstance(x, np.ndarray):
         x = np.asarray(x)
 
@@ -1332,6 +1339,9 @@ def change_quantiles(x, ql, qh, isabs, f_agg):
     :return: the value of this feature
     :return type: float
     """
+    if isinstance(x, pd.Series):
+        x = x.values
+
     if not isinstance(x, np.ndarray):
         x = np.asarray(x)
 
@@ -1430,6 +1440,9 @@ def c3(x, lag):
     :return: the value of this feature
     :return type: float
     """
+    if isinstance(x, pd.Series):
+        x = x.values
+
     if not isinstance(x, np.ndarray):
         x = np.asarray(x)
     n = x.size
