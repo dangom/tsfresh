@@ -975,13 +975,12 @@ def fft_aggregated(x, param):
     assert set([config["aggtype"] for config in param]) <= set(["centroid", "variance", "skew", "kurtosis"]), \
         'Attribute must be "centroid", "variance", "skew", "kurtosis"'
 
-
     def get_moment(y, moment):
         """
         Returns the (non centered) moment of the distribution y:
         E[y**moment] = \sum_i[index(y_i)^moment * y_i] / \sum_i[y_i]
-        
-        :param y: the discrete distribution from which one wants to calculate the moment 
+
+        :param y: the discrete distribution from which one wants to calculate the moment
         :type y: pandas.Series or np.array
         :param moment: the moment one wants to calcalate (choose 1,2,3, ... )
         :type moment: int
@@ -992,19 +991,19 @@ def fft_aggregated(x, param):
 
     def get_centroid(y):
         """
-        :param y: the discrete distribution from which one wants to calculate the centroid 
+        :param y: the discrete distribution from which one wants to calculate the centroid
         :type y: pandas.Series or np.array
         :return: the centroid of distribution y (aka distribution mean, first moment)
-        :return type: float 
+        :return type: float
         """
         return get_moment(y, 1)
 
     def get_variance(y):
         """
-        :param y: the discrete distribution from which one wants to calculate the variance 
+        :param y: the discrete distribution from which one wants to calculate the variance
         :type y: pandas.Series or np.array
         :return: the variance of distribution y
-        :return type: float 
+        :return type: float
         """
         return get_moment(y, 2) - get_centroid(y) ** 2
 
@@ -1012,11 +1011,11 @@ def fft_aggregated(x, param):
         """
         Calculates the skew as the third standardized moment.
         Ref: https://en.wikipedia.org/wiki/Skewness#Definition
-        
-        :param y: the discrete distribution from which one wants to calculate the skew 
+
+        :param y: the discrete distribution from which one wants to calculate the skew
         :type y: pandas.Series or np.array
         :return: the skew of distribution y
-        :return type: float 
+        :return type: float
         """
 
         variance = get_variance(y)
@@ -1033,11 +1032,11 @@ def fft_aggregated(x, param):
         """
         Calculates the kurtosis as the fourth standardized moment.
         Ref: https://en.wikipedia.org/wiki/Kurtosis#Pearson_moments
-        
-        :param y: the discrete distribution from which one wants to calculate the kurtosis 
+
+        :param y: the discrete distribution from which one wants to calculate the kurtosis
         :type y: pandas.Series or np.array
         :return: the kurtosis of distribution y
-        :return type: float 
+        :return type: float
         """
 
         variance = get_variance(y)
